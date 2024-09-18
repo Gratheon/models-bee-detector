@@ -4,6 +4,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.jetson
+    command:
+      python3 /app/server.py
     environment:
       - ENV_ID=prod
       - CUDA_VISIBLE_DEVICES=0
