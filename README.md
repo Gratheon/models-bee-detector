@@ -9,6 +9,16 @@ Microservice that detects bees
   https://github.com/mattnudi/bee-detection
   https://universe.roboflow.com/matt-nudi/honey-bee-detection-model-zgjnb
 
+## Architecture
+
+### Service diagram
+
+```mermaid
+flowchart LR
+    web-app("<a href='https://github.com/Gratheon/web-app'>web-app</a>\n:8080") --> graphql-router("<a href='https://github.com/Gratheon/graphql-router'>graphql-router</a>") --> image-splitter("<a href='https://github.com/Gratheon/image-splitter'>image-splitter</a>\n:8800") --"send cropped image"-->models-bee-detector
+```
+
+
 ## Usage
 
 ```bash
