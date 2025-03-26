@@ -69,7 +69,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                 weights = "/weights/best.pt"
 
             if os.getenv("CUDA_VISIBLE_DEVICES") != "":
-                device = "0"
+                device = "cpu"
 
             run(
                 weights=weights,
