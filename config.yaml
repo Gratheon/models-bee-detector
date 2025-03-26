@@ -1,0 +1,37 @@
+# clarifai config
+
+model:
+  id: "bee-detector-model"
+  user_id: "clarifai"
+  app_id: "artjom-model-upload-test"
+  model_type_id: "visual-detector"
+
+#inference_compute_info:
+#  cpu_limit: "2"
+#  cpu_memory: "8Gi"
+#  num_accelerators: 1
+#  accelerator_type: ["NVIDIA-A10G"] # Specify GPU types if needed
+#  accelerator_memory: "8Gi"
+
+
+
+build_info:
+  python_version: "3.11"
+
+inference_compute_info:
+  cpu_limit: "4"
+  cpu_memory: "2Gi"
+  num_accelerators: 1
+  accelerator_type: ["NVIDIA*"]
+  accelerator_memory: "5Gi"
+
+
+concepts:
+- id: '0'
+  name: bee-worker
+- id: '1'
+  name: bee-drone
+- id: '2'
+  name: bee-worker-occluded
+- id: '3'
+  name: bee-queen
