@@ -73,7 +73,10 @@ class Ensemble(nn.ModuleList):
 def attempt_load(weights, device=None, inplace=True, fuse=True):
     # Loads an ensemble of models weights=[a,b,c] or a single model weights=[a] or weights=a
     from models.yolo import Detect, Model
-
+    
+    # Add Model class to safe globals for PyTorch 2.6+ compatibility
+    torch.serialization.add_safe_globals([Model])
+    
     model = Ensemble()
     for w in weights if isinstance(weights, list) else [weights]:
         ckpt = torch.load(attempt_download(w), map_location='cpu')  # load

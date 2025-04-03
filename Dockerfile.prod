@@ -1,7 +1,7 @@
 FROM ubuntu:22.04
 
 ENV NODE_VERSION=16.16.0
-RUN apt-get update && apt-get install -y curl python3 pip ffmpeg libsm6 libxext6
+RUN apt-get update && apt-get install -y curl python3 pip ffmpeg libsm6 libxext6 git
 
 # ensure all directories exist
 WORKDIR /app
