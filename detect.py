@@ -33,7 +33,8 @@ import os
 import platform
 import sys
 from pathlib import Path
-
+import io               # Ensure io is imported
+import numpy as np      # Ensure numpy is imported
 import torch
 
 FILE = Path(__file__).resolve()
@@ -43,7 +44,7 @@ if str(ROOT) not in sys.path:
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 from models.common import DetectMultiBackend
-from utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams
+from utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams, letterbox # Ensure letterbox is imported
 from utils.general import (LOGGER, Profile, check_file, check_img_size, check_imshow, check_requirements, colorstr, cv2,
                            increment_path, non_max_suppression, print_args, scale_boxes, strip_optimizer, xyxy2xywh)
 from utils.plots import Annotator, colors, save_one_box
@@ -79,19 +80,47 @@ def run(
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference
         vid_stride=1,  # video frame-rate stride
+        image_buffer=None, # Ensure image_buffer parameter exists
 ):
-    source = str(source)
-    save_img = not nosave and not source.endswith('.txt')  # save inference images
-    is_file = Path(source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
+    # --- Start: Added logic for image_buffer ---
+    if image_buffer:
+        source = 'image_buffer' # Set a dummy source name
+        save_img = False    # Disable saving image
+        nosave = True       # Ensure nosave is true
+        save_txt = False    # Disable saving txt
+        save_conf = False   # Disable saving conf
+        save_crop = False   # Disable saving crop
+        view_img = False    # Disable viewing image
+        visualize = False   # Disable visualizing features
+    # --- End: Added logic for image_buffer ---
+    else:
+        source = str(source)
+        save_img = not nosave and not source.endswith('.txt')  # save inference images
+
+    is_file = Path(source).suffix[1:] in (IMG_FORMATS + VID_FORMATS) # Original is_file logic
     is_url = source.lower().startswith(('rtsp://', 'rtmp://', 'http://', 'https://'))
     webcam = source.isnumeric() or source.endswith('.streams') or (is_url and not is_file)
     screenshot = source.lower().startswith('screen')
     if is_url and is_file:
         source = check_file(source)  # download
 
-    # Directories
-    save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
-    (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+    # Directories (only create if saving output)
+    save_dir = None # Initialize save_dir to None
+    # --- Start: Corrected conditional directory creation ---
+    if not nosave or save_txt:
+        # Ensure project is not None before creating Path
+        if project is not None:
+            save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
+            # Create directory if save_dir was successfully created
+            if save_dir:
+                 (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+        else:
+             # Log a warning if saving is requested but project is None (shouldn't happen with image_buffer)
+             if not image_buffer:
+                 LOGGER.warning("Saving requested but 'project' argument is None. Output will not be saved.")
+             nosave = True # Force nosave if project is None
+             save_txt = False
+    # --- End: Corrected conditional directory creation ---
 
     # Load model
     device = select_device(device)
@@ -99,33 +128,81 @@ def run(
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
 
-    # Dataloader
+    # Dataloader & Preprocessing for image_buffer
     bs = 1  # batch_size
-    if webcam:
+    dataset = None # Initialize dataset to None
+    im, im0s = None, None # Initialize image variables
+
+    # --- Start: Added image buffer preprocessing ---
+    if image_buffer:
+        # Decode image from buffer
+        nparr = np.frombuffer(image_buffer, np.uint8)
+        im0 = cv2.imdecode(nparr, cv2.IMREAD_COLOR) # Decode BGR image
+        assert im0 is not None, 'Image buffer could not be decoded by OpenCV'
+        im0s = [im0.copy()] # Keep original image copy for reference if needed
+
+        # Preprocess image (letterbox, CHW, RGB, contiguous, tensor, normalize)
+        im = letterbox(im0, imgsz, stride=stride, auto=pt)[0] # Padded resize
+        im = im.transpose((2, 0, 1))[::-1] # HWC to CHW, BGR to RGB
+        im = np.ascontiguousarray(im) # Make contiguous
+
+        # Convert to tensor
+        im = torch.from_numpy(im).to(model.device)
+        im = im.half() if model.fp16 else im.float()  # Convert to fp16/32
+        im /= 255  # Normalize to 0.0 - 1.0
+        if len(im.shape) == 3:
+            im = im[None]  # Add batch dimension if needed (bs=1)
+        # Set dummy variables needed later in the loop
+        path = 'image_buffer'
+        s = '%gx%g ' % im.shape[2:] # Image dimensions string
+        vid_cap = None
+    # --- End: Added image buffer preprocessing ---
+    elif webcam:
         view_img = check_imshow(warn=True)
         dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
         bs = len(dataset)
     elif screenshot:
         dataset = LoadScreenshots(source, img_size=imgsz, stride=stride, auto=pt)
-    else:
+    else: # File/Directory source
         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
-    vid_path, vid_writer = [None] * bs, [None] * bs
+
+    vid_path, vid_writer = [None] * bs, [None] * bs # Initialize video writer vars
 
     # Run inference
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
-    for path, im, im0s, vid_cap, s in dataset:
-        with dt[0]:
-            im = torch.from_numpy(im).to(model.device)
-            im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
-            im /= 255  # 0 - 255 to 0.0 - 1.0
-            if len(im.shape) == 3:
-                im = im[None]  # expand for batch dim
+    all_detections = [] # List to store detections for return
+
+    # Determine the loop mechanism based on source type
+    # --- Start: Modified loop setup ---
+    if image_buffer:
+        # Create a dummy iterator for the single preprocessed buffer image
+        data_iterator = [(path, im, im0s, vid_cap, s)]
+    elif dataset: # Use the loaded dataset if not processing buffer
+        data_iterator = dataset
+    else: # Should not happen if source validation is correct
+        LOGGER.error("No valid source (file, directory, stream) or image_buffer provided.")
+        return [] # Return empty list if no input
+    # --- End: Modified loop setup ---
+
+    for path, im_tensor, im0s_list, vid_cap_item, s_prefix in data_iterator:
+        # Use pre-calculated tensor/im0 for buffer, or values from dataset iterator
+        current_im = im if image_buffer else im_tensor
+        current_im0s = im0s if image_buffer else im0s_list
+
+        # Preprocessing for dataset items (already done for buffer)
+        if not image_buffer:
+             with dt[0]:
+                current_im = torch.from_numpy(current_im).to(model.device) # Use current_im here
+                current_im = current_im.half() if model.fp16 else current_im.float()
+                current_im /= 255
+                if len(current_im.shape) == 3:
+                    current_im = current_im[None]
 
         # Inference
         with dt[1]:
-            visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
-            pred = model(im, augment=augment, visualize=visualize)
+            # visualize_path = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize and not image_buffer else False # Original visualize path
+            pred = model(current_im, augment=augment, visualize=visualize) # Pass visualize directly (disabled for buffer anyway)
 
         # NMS
         with dt[2]:
@@ -135,85 +212,135 @@ def run(
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
 
         # Process predictions
-        for i, det in enumerate(pred):  # per image
+        image_detections = [] # Detections for the current image
+        for i, det in enumerate(pred):  # per image (even if bs=1)
             seen += 1
             if webcam:  # batch_size >= 1
-                p, im0, frame = path[i], im0s[i].copy(), dataset.count
-                s += f'{i}: '
+                p, im0, frame = path[i], current_im0s[i].copy(), dataset.count
+                s = s_prefix + f'{i}: '
+            elif image_buffer:
+                 p, im0, frame = Path(path), current_im0s[0].copy(), 0 # Use buffer image, Path() for consistency
+                 s = s_prefix
             else:
-                p, im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
+                p, im0, frame = Path(path), current_im0s.copy(), getattr(dataset, 'frame', 0) # Path() for consistency
+                s = s_prefix
 
-            p = Path(p)  # to Path
-            save_path = str(save_dir / p.name)  # im.jpg
-            txt_path = str(save_dir / 'result') + ('' if dataset.mode == 'image' else f'_{frame}')  # im.txt
-            s += '%gx%g ' % im.shape[2:]  # print string
+            # Path setup (only relevant if saving output)
+            save_path = str(save_dir / p.name) if save_dir else None # Use save_dir if defined
+            txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset and dataset.mode == 'image' else f'_{frame}') if save_dir and save_txt else None # Use save_dir if defined
+
+            s += '%gx%g ' % current_im.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             imc = im0.copy() if save_crop else im0  # for save_crop
             annotator = Annotator(im0, line_width=line_thickness, example=str(names))
+
             if len(det):
                 # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
+                det[:, :4] = scale_boxes(current_im.shape[2:], det[:, :4], im0.shape).round()
 
                 # Print results
                 for c in det[:, 5].unique():
                     n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
-                # Write results
+                # Write results or collect them
                 for *xyxy, conf, cls in reversed(det):
-                    if save_txt:  # Write to file
-                        xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                        line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
-                        with open(f'{txt_path}.txt', 'a') as f:
-                            f.write(('%g ' * len(line)).rstrip() % line + '\n')
+                    c = int(cls)  # integer class
+                    label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
 
-                    if save_img or save_crop or view_img:  # Add bbox to image
-                        c = int(cls)  # integer class
-                        label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
-                        annotator.box_label(xyxy, label, color=colors(c, True))
-                    if save_crop:
-                        save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
+                    # --- Start: Collect results for buffer OR save for file ---
+                    if image_buffer:
+                         # Collect detection info as a dictionary
+                         detection_info = {
+                            'class_id': c,
+                            'class_name': names[c],
+                            'confidence': conf.item(), # Convert tensor to float
+                            'box': [coord.item() for coord in xyxy] # Convert tensor coords to floats
+                         }
+                         image_detections.append(detection_info)
+                    else:
+                        # Original file saving logic
+                        if save_txt:
+                            xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                            line = (c, *xywh, conf) if save_conf else (c, *xywh)  # label format
+                            # Ensure txt_path is defined before writing
+                            if txt_path:
+                                with open(f'{txt_path}.txt', 'a') as f:
+                                    f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
-            # Stream results
-            im0 = annotator.result()
-            if view_img:
-                if platform.system() == 'Linux' and p not in windows:
-                    windows.append(p)
-                    cv2.namedWindow(str(p), cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # allow window resize (Linux)
-                    cv2.resizeWindow(str(p), im0.shape[1], im0.shape[0])
-                cv2.imshow(str(p), im0)
-                cv2.waitKey(1)  # 1 millisecond
+                        # Add bbox to image (only if saving/viewing)
+                        if save_img or save_crop or view_img:
+                            annotator.box_label(xyxy, label, color=colors(c, True))
+                        # Save cropped box (only if requested)
+                        if save_crop:
+                             # Ensure save_dir and p are defined
+                             if save_dir and p:
+                                save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
+                    # --- End: Collect results for buffer OR save for file ---
 
-            # Save results (image with detections)
-            if save_img:
-                if dataset.mode == 'image':
-                    cv2.imwrite(save_path, im0)
-                else:  # 'video' or 'stream'
-                    if vid_path[i] != save_path:  # new video
-                        vid_path[i] = save_path
-                        if isinstance(vid_writer[i], cv2.VideoWriter):
-                            vid_writer[i].release()  # release previous video writer
-                        if vid_cap:  # video
-                            fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                            w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                            h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                        else:  # stream
-                            fps, w, h = 30, im0.shape[1], im0.shape[0]
-                        save_path = str(Path(save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
-                        vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-                    vid_writer[i].write(im0)
+            # --- Start: Moved result collection/saving outside inner loop ---
+            # Add collected detections for the current image (buffer only)
+            if image_buffer:
+                all_detections.extend(image_detections)
 
-        # Print time (inference-only)
+            # Stream/Save image results (file/stream sources only)
+            if not image_buffer:
+                im0 = annotator.result() # Get annotated image
+                # Stream results
+                if view_img:
+                    if platform.system() == 'Linux' and p not in windows:
+                        windows.append(p)
+                        cv2.namedWindow(str(p), cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # allow window resize (Linux)
+                        cv2.resizeWindow(str(p), im0.shape[1], im0.shape[0])
+                    cv2.imshow(str(p), im0)
+                    cv2.waitKey(1)  # 1 millisecond
+
+                # Save results (image with detections)
+                if save_img:
+                    # Ensure dataset and save_path are defined
+                    if dataset and save_path:
+                        if dataset.mode == 'image':
+                            cv2.imwrite(save_path, im0)
+                        else:  # 'video' or 'stream'
+                            if vid_path[i] != save_path:  # new video
+                                vid_path[i] = save_path
+                                if isinstance(vid_writer[i], cv2.VideoWriter):
+                                    vid_writer[i].release()  # release previous video writer
+                                if vid_cap_item:  # video
+                                    fps = vid_cap_item.get(cv2.CAP_PROP_FPS)
+                                    w = int(vid_cap_item.get(cv2.CAP_PROP_FRAME_WIDTH))
+                                    h = int(vid_cap_item.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                                else:  # stream
+                                    fps, w, h = 30, im0.shape[1], im0.shape[0]
+                                save_path = str(Path(save_path).with_suffix('.mp4'))  # force *.mp4 suffix
+                                vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+                            vid_writer[i].write(im0)
+            # --- End: Moved result collection/saving outside inner loop ---
+
+        # Print time (inference-only) - moved outside inner loop
         LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{dt[1].dt * 1E3:.1f}ms")
+        # --- End inner loop (per detection) ---
+    # --- End outer loop (per image/frame) ---
 
-    # Print results
+    # Print results and return detections if processing buffer
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
     LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *imgsz)}' % t)
-    if save_txt or save_img:
-        s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ''
-        LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}{s}")
-    if update:
-        strip_optimizer(weights[0])  # update model (to fix SourceChangeWarning)
+
+    # --- Start: Modified return logic ---
+    if image_buffer:
+        return all_detections # Return collected detections list
+
+    # Original return logic for file/stream processing
+    if not image_buffer:
+        if save_txt or save_img:
+             # Ensure save_dir is defined
+             if save_dir:
+                s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ''
+                LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}{s}")
+        if update:
+            strip_optimizer(weights[0])  # update model (to fix SourceChangeWarning)
+    # Implicitly return None if not image_buffer
+    # --- End: Modified return logic ---
 
 
 def parse_opt():

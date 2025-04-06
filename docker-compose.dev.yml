@@ -10,15 +10,10 @@ services:
       - ENV_ID=dev
       - DD_SERVICE=models-bee-detector
       - DD_ENV=dev
-      - DD_PROFILING_ENABLED=true
+      - DD_PROFILING_ENABLED=false
     ports:
       - 8700:8700
       - 8126:8126
     volumes:
       - .:/app/
     restart: always
-    # network_mode: bridge
-    networks:
-      - gratheon
-networks:
-  gratheon:
