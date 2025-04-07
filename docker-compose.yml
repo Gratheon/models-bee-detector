@@ -6,12 +6,8 @@ services:
     # command: python3 /app/server.py # Removed, CMD is in Dockerfile now
     environment:
       - ENV_ID=prod
-      - DD_SERVICE=models-bee-detector
-      - DD_ENV=prod
-      - DD_PROFILING_ENABLED=true
     ports:
       - 8700:8700
-      - 8126:8126
     # volumes: # Removed, code is copied in Dockerfile now
     #   - .:/app/
     restart: always
