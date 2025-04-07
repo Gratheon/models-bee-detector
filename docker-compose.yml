@@ -11,3 +11,4 @@ services:
     # volumes: # Removed, code is copied in Dockerfile now
     #   - .:/app/
     restart: always
+    network_mode: host
