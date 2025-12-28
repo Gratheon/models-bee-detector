@@ -19,6 +19,11 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 COPY . /app/
 RUN ls /app/weights
 
+RUN find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+ENV PYTHONPATH=/app
+ENV PYTHONDONTWRITEBYTECODE=1
+
 EXPOSE 8700
 
 # CMD ["python3", "/app/server.py"]
