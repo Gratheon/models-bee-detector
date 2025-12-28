@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     pip cache purge && \
     rm -rf /root/.cache/pip
 
+COPY yolo_utils/ /app/yolo_utils/
 COPY . /app/
 RUN ls /app/weights
 
