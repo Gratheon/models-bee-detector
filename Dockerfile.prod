@@ -15,11 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     pip cache purge && \
     rm -rf /root/.cache/pip
 
-COPY server.py detect.py ./
-COPY models/ ./models/
-COPY data/ ./data/
-COPY yolo_utils/ ./yolo_utils/
-COPY weights/ ./weights/
+COPY . /app/
 
 EXPOSE 8700
 CMD ["python3", "server.py"]

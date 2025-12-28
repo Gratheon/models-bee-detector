@@ -7,6 +7,15 @@ runs
 output
 coco
 storage.googleapis.com
+docker-compose*.yml
+Dockerfile*
+*.md
+!README.md
+tutorial.ipynb
+benchmarks.py
+tmp/
+.pre-commit-config.yaml
+.DS_Store
 
 data/samples/*
 **/results*.csv
