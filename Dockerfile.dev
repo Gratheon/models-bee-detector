@@ -1,15 +1,22 @@
 # FROM dustynv/l4t-pytorch:r36.2.0
-FROM ubuntu:22.04
+FROM python:3.11-slim
 
-ENV NODE_VERSION=16.16.0
-RUN apt-get update && apt-get install -y curl python3 pip ffmpeg libsm6 libxext6
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsm6 \
+    libxext6 \
+    libgomp1 \
+    libgl1 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
-# ensure all directories exist
 WORKDIR /app
-USER root
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip cache purge && \
+    rm -rf /root/.cache/pip
 
 COPY . /app/
-RUN cd /app && pip install -r requirements.txt
 RUN ls /app/weights
 
 EXPOSE 8700

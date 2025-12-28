@@ -42,21 +42,21 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 import segment.val as validate  # for end-of-epoch mAP
 from models.experimental import attempt_load
 from models.yolo import SegmentationModel
-from utils.autoanchor import check_anchors
-from utils.autobatch import check_train_batch_size
-from utils.callbacks import Callbacks
-from utils.downloads import attempt_download, is_url
-from utils.general import (LOGGER, TQDM_BAR_FORMAT, check_amp, check_dataset, check_file, check_git_info,
+from yolo_utils.autoanchor import check_anchors
+from yolo_utils.autobatch import check_train_batch_size
+from yolo_utils.callbacks import Callbacks
+from yolo_utils.downloads import attempt_download, is_url
+from yolo_utils.general import (LOGGER, TQDM_BAR_FORMAT, check_amp, check_dataset, check_file, check_git_info,
                            check_git_status, check_img_size, check_requirements, check_suffix, check_yaml, colorstr,
                            get_latest_run, increment_path, init_seeds, intersect_dicts, labels_to_class_weights,
                            labels_to_image_weights, one_cycle, print_args, print_mutation, strip_optimizer, yaml_save)
-from utils.loggers import GenericLogger
-from utils.plots import plot_evolve, plot_labels
-from utils.segment.dataloaders import create_dataloader
-from utils.segment.loss import ComputeLoss
-from utils.segment.metrics import KEYS, fitness
-from utils.segment.plots import plot_images_and_masks, plot_results_with_masks
-from utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, select_device, smart_DDP, smart_optimizer,
+from yolo_utils.loggers import GenericLogger
+from yolo_utils.plots import plot_evolve, plot_labels
+from yolo_utils.segment.dataloaders import create_dataloader
+from yolo_utils.segment.loss import ComputeLoss
+from yolo_utils.segment.metrics import KEYS, fitness
+from yolo_utils.segment.plots import plot_images_and_masks, plot_results_with_masks
+from yolo_utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, select_device, smart_DDP, smart_optimizer,
                                smart_resume, torch_distributed_zero_first)
 
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html

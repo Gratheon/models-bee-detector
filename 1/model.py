@@ -12,16 +12,16 @@ import tempfile
 
 # Add YOLOv5 modules to path
 FILE = Path(__file__).resolve()
-ROOT = FILE.parents[0]  # YOLOv5 root directory
+ROOT = FILE.parents[1]  # YOLOv5 root directory
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 
 # Import YOLOv5 modules
 try:
     from models.common import DetectMultiBackend
-    from utils.general import (check_img_size, non_max_suppression, scale_boxes, xyxy2xywh)
-    from utils.torch_utils import select_device
-    from utils.dataloaders import LoadImages
+    from yolo_utils.general import (check_img_size, non_max_suppression, scale_boxes, xyxy2xywh)
+    from yolo_utils.torch_utils import select_device
+    from yolo_utils.dataloaders import LoadImages
 except ImportError:
     # Fallback paths for different directory structure
     YOLO_ROOT = Path('/app')  # Adjust this path based on your container structure
@@ -29,24 +29,21 @@ except ImportError:
         sys.path.append(str(YOLO_ROOT))
     
     from models.common import DetectMultiBackend
-    from utils.general import (check_img_size, non_max_suppression, scale_boxes, xyxy2xywh)
-    from utils.torch_utils import select_device
-    from utils.dataloaders import LoadImages
+    from yolo_utils.general import (check_img_size, non_max_suppression, scale_boxes, xyxy2xywh)
+    from yolo_utils.torch_utils import select_device
+    from yolo_utils.dataloaders import LoadImages
 
 class YourCustomModel(ModelClass):
     def load_model(self):
         '''Initialize and load the model here'''
         # Determine weights path based on environment
-        if os.getenv("ENV_ID") == "dev":
-            self.weights = "/weights/best.pt"
-        else:
-            self.weights = "/app/weights/best.pt"
+        self.weights = "../weights/best.pt"
         
         # Determine device based on environment
-        if os.getenv("CUDA_VISIBLE_DEVICES") != "":
-            self.device = "0"  # Use GPU
-        else:
-            self.device = "cpu"  # Use CPU
+        # if os.getenv("CUDA_VISIBLE_DEVICES") != "":
+        #     self.device = "0"  # Use GPU
+        # else:
+        self.device = "cpu"  # Use CPU
         
         # Model parameters
         self.imgsz = (640, 640)  # Inference size
