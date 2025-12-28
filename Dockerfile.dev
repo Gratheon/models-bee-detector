@@ -19,7 +19,12 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 COPY . /app/
 RUN ls /app/weights
 
-RUN find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+RUN find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
+    if [ ! -d "/app/yolo_utils" ]; then \
+        if [ -d "/app/utils" ]; then \
+            ln -s utils yolo_utils; \
+        fi; \
+    fi
 
 ENV PYTHONPATH=/app
 ENV PYTHONDONTWRITEBYTECODE=1

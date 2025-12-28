@@ -18,8 +18,12 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 COPY . /app/
 
 RUN find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
-    ls -la /app/ && \
-    ls -la /app/yolo_utils/ && \
+    if [ ! -d "/app/yolo_utils" ]; then \
+        if [ -d "/app/utils" ]; then \
+            ln -s utils yolo_utils; \
+        fi; \
+    fi && \
+    ls -la /app/ | grep -E "(utils|yolo)" && \
     python3 -c "import sys; sys.path.insert(0, '/app'); from yolo_utils import TryExcept; print('✓ yolo_utils import successful')"
 
 ENV PYTHONPATH=/app
