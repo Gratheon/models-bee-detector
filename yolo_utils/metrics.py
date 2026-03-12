@@ -7,11 +7,15 @@ import math
 import warnings
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
 from yolo_utils import TryExcept, threaded
+
+try:
+    import matplotlib.pyplot as plt
+except Exception:
+    plt = None
 
 
 def fitness(x):
@@ -316,6 +320,8 @@ def wh_iou(wh1, wh2, eps=1e-7):
 
 @threaded
 def plot_pr_curve(px, py, ap, save_dir=Path('pr_curve.png'), names=()):
+    if plt is None:
+        raise ImportError("matplotlib is required to plot PR curves")
     # Precision-recall curve
     fig, ax = plt.subplots(1, 1, figsize=(9, 6), tight_layout=True)
     py = np.stack(py, axis=1)
@@ -339,6 +345,8 @@ def plot_pr_curve(px, py, ap, save_dir=Path('pr_curve.png'), names=()):
 
 @threaded
 def plot_mc_curve(px, py, save_dir=Path('mc_curve.png'), names=(), xlabel='Confidence', ylabel='Metric'):
+    if plt is None:
+        raise ImportError("matplotlib is required to plot metric-confidence curves")
     # Metric-confidence curve
     fig, ax = plt.subplots(1, 1, figsize=(9, 6), tight_layout=True)
 

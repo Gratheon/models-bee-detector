@@ -1,21 +1,16 @@
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsm6 \
-    libxext6 \
     libgomp1 \
-    libgl1 \
-    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY requirements-prod.txt .
-RUN pip install --no-cache-dir -r requirements-prod.txt && \
+RUN pip install --no-cache-dir --no-compile -r requirements-prod.txt && \
     pip cache purge && \
     rm -rf /root/.cache/pip
 
-COPY yolo_utils/ /app/yolo_utils/
 COPY . /app/
 
 RUN find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \

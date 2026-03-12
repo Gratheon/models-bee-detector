@@ -25,9 +25,14 @@ from models.common import *
 from models.experimental import *
 from yolo_utils.autoanchor import check_anchor_order
 from yolo_utils.general import LOGGER, check_version, check_yaml, make_divisible, print_args
-from yolo_utils.plots import feature_visualization
 from yolo_utils.torch_utils import (fuse_conv_and_bn, initialize_weights, model_info, profile, scale_img, select_device,
                                time_sync)
+
+try:
+    from yolo_utils.plots import feature_visualization
+except Exception:
+    def feature_visualization(*args, **kwargs):
+        return None
 
 try:
     import thop  # for FLOPs computation

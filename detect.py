@@ -47,7 +47,6 @@ from models.common import DetectMultiBackend
 from yolo_utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams, letterbox # Ensure letterbox is imported
 from yolo_utils.general import (LOGGER, Profile, check_file, check_img_size, check_imshow, check_requirements, colorstr, cv2,
                            increment_path, non_max_suppression, print_args, scale_boxes, strip_optimizer, xyxy2xywh)
-from yolo_utils.plots import Annotator, colors, save_one_box
 from yolo_utils.torch_utils import select_device, smart_inference_mode
 
 
@@ -82,6 +81,9 @@ def run(
         vid_stride=1,  # video frame-rate stride
         image_buffer=None, # Ensure image_buffer parameter exists
 ):
+    plot_utils = None
+    use_plot_utils = view_img or save_crop
+
     # --- Start: Added logic for image_buffer ---
     if image_buffer:
         source = 'image_buffer' # Set a dummy source name
@@ -96,6 +98,11 @@ def run(
     else:
         source = str(source)
         save_img = not nosave and not source.endswith('.txt')  # save inference images
+        use_plot_utils = use_plot_utils or save_img
+
+    if use_plot_utils:
+        from yolo_utils.plots import Annotator, colors, save_one_box
+        plot_utils = (Annotator, colors, save_one_box)
 
     is_file = Path(source).suffix[1:] in (IMG_FORMATS + VID_FORMATS) # Original is_file logic
     is_url = source.lower().startswith(('rtsp://', 'rtmp://', 'http://', 'https://'))
@@ -232,7 +239,10 @@ def run(
             s += '%gx%g ' % current_im.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             imc = im0.copy() if save_crop else im0  # for save_crop
-            annotator = Annotator(im0, line_width=line_thickness, example=str(names))
+            annotator = None
+            if plot_utils is not None:
+                Annotator, _, _ = plot_utils
+                annotator = Annotator(im0, line_width=line_thickness, example=str(names))
 
             if len(det):
                 # Rescale boxes from img_size to im0 size
@@ -270,11 +280,13 @@ def run(
 
                         # Add bbox to image (only if saving/viewing)
                         if save_img or save_crop or view_img:
+                            _, colors, _ = plot_utils
                             annotator.box_label(xyxy, label, color=colors(c, True))
                         # Save cropped box (only if requested)
                         if save_crop:
                              # Ensure save_dir and p are defined
                              if save_dir and p:
+                                _, _, save_one_box = plot_utils
                                 save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
                     # --- End: Collect results for buffer OR save for file ---
 
@@ -285,7 +297,8 @@ def run(
 
             # Stream/Save image results (file/stream sources only)
             if not image_buffer:
-                im0 = annotator.result() # Get annotated image
+                if annotator is not None:
+                    im0 = annotator.result() # Get annotated image
                 # Stream results
                 if view_img:
                     if platform.system() == 'Linux' and p not in windows:

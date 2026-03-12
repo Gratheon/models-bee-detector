@@ -17,11 +17,9 @@ from urllib.parse import urlparse
 
 import cv2
 import numpy as np
-import pandas as pd
 import requests
 import torch
 import torch.nn as nn
-from IPython.display import display
 from PIL import Image
 from torch.cuda import amp
 
@@ -30,8 +28,12 @@ from yolo_utils.dataloaders import exif_transpose, letterbox
 from yolo_utils.general import (LOGGER, ROOT, Profile, check_requirements, check_suffix, check_version, colorstr,
                            increment_path, is_notebook, make_divisible, non_max_suppression, scale_boxes, xywh2xyxy,
                            xyxy2xywh, yaml_load)
-from yolo_utils.plots import Annotator, colors, save_one_box
 from yolo_utils.torch_utils import copy_attr, smart_inference_mode
+
+try:
+    import pandas as pd
+except Exception:
+    pd = None
 
 
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
@@ -600,9 +602,21 @@ class DetectMultiBackend(nn.Module):
     def _model_type(p='path/to/model.pt'):
         # Return model type from model path, i.e. path='path/to/model.onnx' -> type=onnx
         # types = [pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle]
-        from export import export_formats
         from yolo_utils.downloads import is_url
-        sf = list(export_formats().Suffix)  # export suffixes
+        sf = [
+            '.pt',
+            '.torchscript',
+            '.onnx',
+            '_openvino_model',
+            '.engine',
+            '.mlmodel',
+            '_saved_model',
+            '.pb',
+            '.tflite',
+            '_edgetpu.tflite',
+            '_web_model',
+            '_paddle_model',
+        ]
         if not is_url(p, check=False):
             check_suffix(p, sf)  # checks
         url = urlparse(p)  # if url may be Triton inference server
@@ -740,6 +754,11 @@ class Detections:
 
     def _run(self, pprint=False, show=False, save=False, crop=False, render=False, labels=True, save_dir=Path('')):
         s, crops = '', []
+        plot_utils = None
+        if show or save or render or crop:
+            from yolo_utils.plots import Annotator, colors, save_one_box
+
+            plot_utils = (Annotator, colors, save_one_box)
         for i, (im, pred) in enumerate(zip(self.ims, self.pred)):
             s += f'\nimage {i + 1}/{len(self.pred)}: {im.shape[0]}x{im.shape[1]} '  # string
             if pred.shape[0]:
@@ -748,6 +767,7 @@ class Detections:
                     s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
                 s = s.rstrip(', ')
                 if show or save or render or crop:
+                    Annotator, colors, save_one_box = plot_utils
                     annotator = Annotator(im, example=str(self.names))
                     for *box, conf, cls in reversed(pred):  # xyxy, confidence, class
                         label = f'{self.names[int(cls)]} {conf:.2f}'
@@ -767,7 +787,12 @@ class Detections:
 
             im = Image.fromarray(im.astype(np.uint8)) if isinstance(im, np.ndarray) else im  # from np
             if show:
-                display(im) if is_notebook() else im.show(self.files[i])
+                if is_notebook():
+                    from IPython.display import display
+
+                    display(im)
+                else:
+                    im.show(self.files[i])
             if save:
                 f = self.files[i]
                 im.save(save_dir / f)  # save
@@ -801,6 +826,8 @@ class Detections:
 
     def pandas(self):
         # return detections as pandas DataFrames, i.e. print(results.pandas().xyxy[0])
+        if pd is None:
+            raise ImportError("pandas is required to convert detections to DataFrames")
         new = copy(self)  # return copy
         ca = 'xmin', 'ymin', 'xmax', 'ymax', 'confidence', 'class', 'name'  # xyxy columns
         cb = 'xcenter', 'ycenter', 'width', 'height', 'confidence', 'class', 'name'  # xywh columns

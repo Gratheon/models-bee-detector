@@ -1,31 +1,16 @@
-# YOLOv5 requirements - CPU ONLY (Production)
-# Usage: pip install -r requirements-prod.txt
-# This installs PyTorch CPU-only version which is ~6GB smaller than CUDA version
-# Estimated total size: ~1-2GB instead of ~8GB
+# YOLOv5 requirements - CPU-only runtime (production inference)
+# Keep this file focused on what server.py/detect.py need at runtime.
 
-# Base ------------------------------------------------------------------------
-ipython  # interactive notebook
-matplotlib>=3.2.2
-numpy>=1.18.5
-opencv-python-headless  # CPU-only, smaller than opencv-python
-Pillow>=7.1.2
-psutil  # system resources
-PyYAML>=5.3.1
-requests>=2.23.0
-scipy>=1.4.1
-thop>=0.1.1  # FLOPs computation
+numpy>=1.23.0
+opencv-python-headless>=4.8.0
+Pillow>=9.0.0
+psutil>=5.9.0
+PyYAML>=6.0
+requests>=2.31.0
+tqdm>=4.65.0
 
-# PyTorch CPU-only (much smaller than CUDA version)
---extra-index-url https://download.pytorch.org/whl/cpu
-torch>=2.0.0
-torchvision>=0.15.0
-
-tqdm>=4.64.0
-
-# Logging ---------------------------------------------------------------------
-tensorboard>=2.4.1
-
-# Plotting --------------------------------------------------------------------
-pandas>=1.1.4
-seaborn>=0.11.0
-
+# Deterministic CPU-only PyTorch wheels.
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+torch==2.10.0+cpu
+torchvision==0.25.0+cpu
