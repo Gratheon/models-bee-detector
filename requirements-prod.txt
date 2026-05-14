@@ -8,6 +8,7 @@ psutil>=5.9.0
 PyYAML>=6.0
 requests>=2.31.0
 tqdm>=4.65.0
+gratheon-log-lib @ https://github.com/Gratheon/log-lib-py/archive/03b30ba.zip
 
 # Deterministic CPU-only PyTorch wheels.
 --index-url https://download.pytorch.org/whl/cpu

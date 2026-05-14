@@ -1,24 +1,44 @@
-import datetime
-print(f"[{datetime.datetime.now()}] Script start", flush=True)
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-import json
-# import tempfile # No longer needed
-import os
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import cgi
+import json
+import os
 import time
-# import subprocess # No longer needed for rm -rf
-from detect import run # Uncommented
-print(f"[{datetime.datetime.now()}] Imports finished", flush=True) # Reverted log message
+import uuid
 
-# Define the request handler class
+from gratheon_log_lib import bind_context, clear_context, configure, error_enriched, info, warn
+
+from detect import run
+
+
+configure()
+
+
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
-    # Handle GET requests
+    def log_message(self, format, *args):
+        info(
+            "http access log",
+            {
+                "remote_addr": self.address_string(),
+                "request_line": self.requestline,
+                "message": format % args,
+            },
+        )
+
     def do_GET(self):
-        self.send_response(200)  # Send 200 OK status code
+        request_id = str(uuid.uuid4())[:8]
+        bind_context(request_id=request_id)
+        info(
+            "serving bee detector upload form",
+            {
+                "path": self.path,
+                "method": "GET",
+                "remote_addr": self.client_address[0] if self.client_address else None,
+            },
+        )
+        self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()
 
-        # Send the HTML form as the response body
         form_html = """
         <html>
         <body>
@@ -30,103 +50,128 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
         </html>
         """
         self.wfile.write(form_html.encode("utf-8"))
+        clear_context()
 
-    # Handle POST requests
     def do_POST(self):
-        content_type = self.headers["Content-Type"]
+        request_id = str(uuid.uuid4())[:8]
+        started_at = time.perf_counter()
+        bind_context(request_id=request_id)
+        content_type = self.headers.get("Content-Type", "")
 
-        # Remove temporary directory creation
-        # reqdir = "/app/tmp/" + str(time.time()) + "/"
-        # os.makedirs(reqdir, exist_ok=True)
+        info(
+            "incoming bee detector request",
+            {
+                "path": self.path,
+                "method": "POST",
+                "remote_addr": self.client_address[0] if self.client_address else None,
+                "content_type": content_type,
+                "content_length": self.headers.get("Content-Length"),
+            },
+        )
 
-        # Check if the content type is multipart/form-data
-        if content_type.startswith("multipart/form-data"):
-            # Parse the form data
+        try:
+            if not content_type.startswith("multipart/form-data"):
+                warn("rejecting request, unsupported content type", {"content_type": content_type})
+                self.send_response(415)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                response = {"message": "Unsupported content type. Please use multipart/form-data."}
+                self.wfile.write(json.dumps(response).encode("utf-8"))
+                return
+
             form_data = cgi.FieldStorage(
                 fp=self.rfile, headers=self.headers, environ={"REQUEST_METHOD": "POST"}
             )
 
-            # Check if 'file' field exists
             if "file" not in form_data:
-                 self.send_response(400)
-                 self.send_header("Content-type", "application/json")
-                 self.end_headers()
-                 response = {"message": "Missing 'file' field in form data"}
-                 self.wfile.write(json.dumps(response).encode("utf-8"))
-                 return
+                warn("rejecting request, missing file field")
+                self.send_response(400)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                response = {"message": "Missing 'file' field in form data"}
+                self.wfile.write(json.dumps(response).encode("utf-8"))
+                return
 
             file_field = form_data["file"]
 
-            # Check if it's a valid file upload FieldStorage instance with a filename
             if not isinstance(file_field, cgi.FieldStorage) or not file_field.filename:
-                 self.send_response(400)
-                 self.send_header("Content-type", "application/json")
-                 self.end_headers()
-                 response = {"message": "'file' field is not a valid file upload"}
-                 self.wfile.write(json.dumps(response).encode("utf-8"))
-                 return
+                warn("rejecting request, invalid file upload")
+                self.send_response(400)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                response = {"message": "'file' field is not a valid file upload"}
+                self.wfile.write(json.dumps(response).encode("utf-8"))
+                return
 
-            # Read file content into memory from the file-like object
             image_data = file_field.file.read()
+            info(
+                "uploaded bee image received",
+                {
+                    "filename": file_field.filename,
+                    "image_bytes": len(image_data),
+                },
+            )
 
-            # Remove temporary file saving logic
-            # with tempfile.NamedTemporaryFile(dir="/app/tmp", delete=False) as tmp_file:
-            #     tmp_file.write(file_field.file.read())
-            #     tmp_file_path = tmp_file.name
-            #     filename = os.path.basename(file_field.filename)
-            #     new_filename = reqdir + filename
-            #     os.rename(tmp_file_path, new_filename)
-
-            # Set weights path directly (copied to /app/weights in Dockerfile.prod)
             weights = "/app/weights/best.pt"
             device = "cpu"
-
-            # Determine device (keep this logic, though ENV_ID check for weights is removed)
-            # if os.getenv("ENV_ID") == "dev": # Removed conditional weights path
-            #     weights = "/weights/best.pt"
-
             if os.getenv("CUDA_VISIBLE_DEVICES") != "":
                 device = "cpu"
 
-            # Call run with image_buffer, disable file saving
+            info(
+                "starting bee detection inference",
+                {
+                    "weights": weights,
+                    "device": device,
+                    "conf_thres": 0.3,
+                    "iou_thres": 0.2,
+                },
+            )
+
             detections = run(
                 weights=weights,
                 device=device,
-                image_buffer=image_data, # Pass image data directly
-                source=None,             # No file source
-                project=None,            # No project dir needed
-                save_txt=False,          # Disable saving txt
-                nosave=True,             # Ensure no image/video save
-                conf_thres=0.3,          # Keep thresholds or adjust as needed
+                image_buffer=image_data,
+                source=None,
+                project=None,
+                save_txt=False,
+                nosave=True,
+                conf_thres=0.3,
                 iou_thres=0.2,
             )
 
-            # Process the returned detections list
-            if not detections:
-                self.send_response(200)
-                self.send_header("Content-type", "application/json")
-                self.end_headers()
-                response = {"message": "Nothing found", "result": []} # Return empty list
-                self.wfile.write(json.dumps(response).encode("utf-8"))
-                # No need for subprocess.call(["rm", "-rf", reqdir])
-                return
-
-            # Format detections for the response
-            response = {"message": "File processed successfully", "result": detections}
-
-            # No need for subprocess.call(["rm", "-rf", reqdir])
+            duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            info(
+                "bee detector request processed",
+                {
+                    "detections": len(detections) if detections else 0,
+                    "duration_ms": duration_ms,
+                },
+            )
 
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
+
+            if not detections:
+                response = {"message": "Nothing found", "result": []}
+                self.wfile.write(json.dumps(response).encode("utf-8"))
+                return
+
+            response = {"message": "File processed successfully", "result": detections}
             self.wfile.write(json.dumps(response).encode("utf-8"))
+        except Exception as exc:
+            error_enriched("bee detector request failed", exc)
+            self.send_response(500)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            response = {"message": "Error processing image", "result": []}
+            self.wfile.write(json.dumps(response).encode("utf-8"))
+        finally:
+            clear_context()
 
 
-# Create an HTTP server with the request handler
-server_address = ("", 8700)  # Listen on all available interfaces, port 8700
+server_address = ("", 8700)
 httpd = ThreadingHTTPServer(server_address, SimpleHTTPRequestHandler)
 
-# Start the server
-print(f"[{datetime.datetime.now()}] Starting server...", flush=True)
-print("Server running on port 8700", flush=True)
+info("starting bee detector server", {"port": 8700})
 httpd.serve_forever()

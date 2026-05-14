@@ -29,6 +29,17 @@ just start
 just start-jetson
 ```
 
+The service uses the shared Python logger directly from GitHub via:
+
+- [`requirements.txt`](/Users/artjom/git/gratheon/models-bee-detector/requirements.txt)
+- [`requirements-prod.txt`](/Users/artjom/git/gratheon/models-bee-detector/requirements-prod.txt)
+
+Pinned dependency:
+
+```txt
+gratheon-log-lib @ https://github.com/Gratheon/log-lib-py/archive/03b30ba.zip
+```
+
 ### CLI usage on bare host
 
 This assumes you have installed all of the old dependencies
