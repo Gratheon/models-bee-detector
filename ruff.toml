@@ -1,0 +1,10 @@
+# Replaces the flake8, isort-check, pyupgrade and yesqa pre-commit hooks for linting.
+# Formatting stays with yapf for now (see setup.cfg).
+target-version = "py38"
+line-length = 120
+extend-exclude = ["*.ipynb"]
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+# Same exclusions the old flake8 config had (yolov5 upstream style)
+ignore = ["E402", "E731", "E741", "F401", "F403", "F405"]
