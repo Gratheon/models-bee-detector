@@ -165,7 +165,7 @@ class YourCustomModel(ModelClass):
             # Clean up temporary file
             try:
                 os.unlink(img_path)
-            except:
+            except OSError:
                 pass
             
             # Create output with all regions
